@@ -291,47 +291,36 @@ fn repo_get_cue(
 
     let s = fs::read_to_string(path)?;
     let cue = Cuna::new(&s)?;
-    let mut album = match (cue.catalog(), options.keyword.as_ref()) {
-        // if catalog is found, fetch metadata from vgmdb
-        (Some(catalog), _) => search_album(&catalog.to_string()).await?,
-        // otherwise try to search with keyword
-        (None, Some(keyword)) => {
-            warn!(
-                "catalog is unavailable, trying to search vgmdb with keyword `{}`",
-                keyword
-            );
-            search_album(&keyword.to_string()).await?
-        }
-        // if none is available, try to search with `TITLE` filed in the cue file
-        (None, None) => match cue.title().first() {
-            Some(title) => {
-                warn!("catalog is unavailable, trying to search vgmdb with title `{}`, which may be inaccurate", title);
-                search_album(&title.to_string()).await?
-            }
-            None => ball!("repo-cue-insufficient-information"),
-        },
-    };
+    let mut album = Album::new(
+        cue.title().first().cloned().unwrap_or_default(),
+        None,
+        cue.performer().join("、"),
+        AnniDate::new(0, 0, 0),
+        String::new(),
+        Default::default(),
+    );
 
-    if album.catalog().is_empty() {
-        match &options.catalog {
-            Some(catalog) => album.set_catalog(catalog.to_string()),
-            None => ball!("repo-cue-insufficient-information")
-        }
-    }
+    for disc_got in cue.files() {
+        let mut disc = Disc::new(
+            String::new(),
+            Some(disc_got.name.to_string()),
+            None,
+            None,
+            Default::default(),
+        );
 
-    // set artist if performer exists
-    let performer = cue.performer().first();
-    if performer.is_some() && album.artist().is_empty() {
-        album.set_artist(performer.cloned())
-    }
-
-    for (file, disc) in cue.files().iter().zip(album.discs_mut()) {
-        for (cue_track, track) in file.tracks.iter().zip(disc.tracks_mut()) {
-            let performer = cue_track.performer().first();
-            if performer.is_some() && track.artist().is_empty() {
-                track.set_artist(performer.cloned())
-            }
+        for track_got in &disc_got.tracks {
+            let title = track_got.title().first().cloned().unwrap_or_default();
+            let track_type = TrackType::guess(&title);
+            disc.push_track(Track::new(
+                title,
+                InheritableValue::own(track_got.performer().join("、")),
+                track_type.map(InheritableValue::own).unwrap_or_default(),
+                Default::default(),
+            ));
         }
+
+        album.push_disc(disc);
     }
 
     if get.print {
