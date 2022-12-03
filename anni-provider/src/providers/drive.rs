@@ -1,12 +1,15 @@
 use crate::{AnniProvider, AudioInfo, AudioResourceReader, ProviderError, Range, ResourceReader};
 use async_trait::async_trait;
 use google_drive3::{
-    hyper, hyper::client::HttpConnector, hyper_rustls::HttpsConnector, oauth2, DriveHub,
+    hyper, hyper::client::HttpConnector, hyper_rustls::HttpsConnector, DriveHub,
 };
+use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU8;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+pub use google_drive3::oauth2;
 
 use self::oauth2::authenticator::Authenticator;
 use self::oauth2::authenticator_delegate::DefaultInstalledFlowDelegate;
@@ -42,12 +45,11 @@ impl Default for DriveAuth {
 }
 
 impl DriveAuth {
-    pub async fn build<P>(
+    pub async fn build(
         self,
-        persist_path: P,
-    ) -> std::io::Result<Authenticator<HttpsConnector<HttpConnector>>>
-    where
-        P: AsRef<Path>,
+        storage: Box<dyn oauth2::storage::TokenStorage>,
+        client: hyper::Client<ProxyConnector<HttpsConnector<HttpConnector>>>
+    ) -> std::io::Result<Authenticator<ProxyConnector<HttpsConnector<HttpConnector>>>>
     {
         match self {
             DriveAuth::InstalledFlow {
@@ -55,7 +57,7 @@ impl DriveAuth {
                 client_secret,
                 project_id,
             } => {
-                oauth2::InstalledFlowAuthenticator::builder(
+                oauth2::InstalledFlowAuthenticator::with_client(
                     oauth2::ApplicationSecret {
                         client_id,
                         project_id,
@@ -70,15 +72,16 @@ impl DriveAuth {
                         client_x509_cert_url: None,
                     },
                     oauth2::InstalledFlowReturnMethod::Interactive,
+                    client
                 )
-                .persist_tokens_to_disk(persist_path.as_ref())
+                .with_storage(storage)
                 .flow_delegate(Box::new(DefaultInstalledFlowDelegate))
                 .build()
                 .await
             }
             DriveAuth::ServiceAccount(sa) => {
-                oauth2::ServiceAccountAuthenticator::builder(sa)
-                    .persist_tokens_to_disk(persist_path.as_ref())
+                oauth2::ServiceAccountAuthenticator::with_client(sa, client)
+                    .with_storage(storage)
                     .build()
                     .await
             }
@@ -93,7 +96,7 @@ pub struct DriveProviderSettings {
 }
 
 pub struct DriveClient {
-    hub: Box<DriveHub<HttpsConnector<HttpConnector>>>,
+    hub: Box<DriveHub<ProxyConnector<HttpsConnector<HttpConnector>>>>,
     settings: DriveProviderSettings,
     /// Semaphore for rate limiting
     semaphore: Semaphore,
@@ -106,22 +109,26 @@ impl DriveClient {
     pub async fn new(
         auth: DriveAuth,
         settings: DriveProviderSettings,
+        storage: Box<dyn oauth2::storage::TokenStorage>
     ) -> Result<Self, ProviderError> {
-        let auth = auth.build(&settings.token_path).await?;
+        let proxy = Proxy::new(Intercept::None, "http://127.0.0.1:10809".parse().unwrap());
+        let connector = HttpsConnectorBuilder::new()
+            .with_native_roots()
+            .https_or_http()
+            .enable_http1()
+            .enable_http2()
+            .build();
+        let client = hyper::Client::builder().build(ProxyConnector::from_proxy(connector, proxy).unwrap());
+
+        let auth = auth.build(storage, client.clone()).await?;
         auth.token(&[
             "https://www.googleapis.com/auth/drive.metadata.readonly",
             "https://www.googleapis.com/auth/drive.readonly",
         ])
         .await?;
+        
         let hub = DriveHub::new(
-            hyper::Client::builder().build(
-                HttpsConnectorBuilder::new()
-                    .with_native_roots()
-                    .https_or_http()
-                    .enable_http1()
-                    .enable_http2()
-                    .build(),
-            ),
+            client,
             auth,
         );
         Ok(Self {
@@ -132,7 +139,7 @@ impl DriveClient {
         })
     }
 
-    fn prepare_list(&self) -> FileListCall<HttpsConnector<HttpConnector>> {
+    fn prepare_list(&self) -> FileListCall<ProxyConnector<HttpsConnector<HttpConnector>>> {
         let result = self
             .hub
             .files()
@@ -240,10 +247,11 @@ impl DriveProvider {
     pub async fn new(
         auth: DriveAuth,
         settings: DriveProviderSettings,
+        storage: Box<dyn oauth2::storage::TokenStorage>,
         repo: Option<RepoDatabaseRead>,
     ) -> Result<Self, ProviderError> {
         let mut this = Self {
-            client: DriveClient::new(auth, settings).await?,
+            client: DriveClient::new(auth, settings, storage).await?,
             folders: Default::default(),
             discs: Default::default(),
             files: Default::default(),
