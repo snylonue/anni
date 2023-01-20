@@ -4,7 +4,6 @@ pub mod route;
 pub mod state;
 pub mod utils;
 
-#[cfg(feature = "metadata")]
 pub mod metadata;
 
 pub mod error {
@@ -16,6 +15,8 @@ pub mod error {
     pub enum AnnilError {
         #[error("unauthorized")]
         Unauthorized,
+        #[error("unknown path")]
+        UnknownPath,
         #[error("not found")]
         NotFound,
     }
@@ -23,7 +24,8 @@ pub mod error {
     impl IntoResponse for AnnilError {
         fn into_response(self) -> Response {
             match self {
-                AnnilError::Unauthorized => StatusCode::FORBIDDEN,
+                AnnilError::Unauthorized => StatusCode::UNAUTHORIZED,
+                AnnilError::UnknownPath => StatusCode::FORBIDDEN,
                 AnnilError::NotFound => StatusCode::NOT_FOUND,
             }
             .into_response()

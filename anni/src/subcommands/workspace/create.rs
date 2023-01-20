@@ -1,10 +1,11 @@
-use crate::workspace::utils::find_dot_anni;
-use anni_common::fs;
-use anni_provider::strict_album_path;
+use anni_workspace::AnniWorkspace;
 use clap::Args;
 use clap_handler::handler;
+use std::env::current_dir;
 use std::num::NonZeroU8;
 use std::path::PathBuf;
+use std::str::FromStr;
+use uuid::Uuid;
 
 #[derive(Args, Debug, Clone)]
 pub struct WorkspaceCreateAction {
@@ -22,14 +23,14 @@ pub struct WorkspaceCreateAction {
 
 #[handler(WorkspaceCreateAction)]
 fn handle_workspace_create(me: WorkspaceCreateAction) -> anyhow::Result<()> {
-    let root = find_dot_anni()?;
+    let workspace = AnniWorkspace::find(current_dir()?)?;
 
     let album_id = me
         .album_id
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let disc_num = me.disc_num.get();
+        .and_then(|a| Uuid::from_str(&a).ok())
+        .unwrap_or_else(|| Uuid::new_v4());
 
-    // 1. check whether the target path exists
+    // check whether the target path exists
     let user_album_path = match me.name {
         Some(name) => me.path.join(name),
         None => me.path,
@@ -38,27 +39,7 @@ fn handle_workspace_create(me: WorkspaceCreateAction) -> anyhow::Result<()> {
         bail!("Target path already exists");
     }
 
-    // 2. create directory in .anni/objects
-    let anni_album_path = strict_album_path(&root.join("objects"), &album_id, 2);
-    if anni_album_path.exists() {
-        anyhow::bail!("Album with the same album id already exists");
-    }
-    fs::create_dir_all(&anni_album_path)?;
-
-    // 3. create directory in userland
-    fs::create_dir_all(&user_album_path)?;
-    fs::symlink_dir(&anni_album_path, &user_album_path.join(".album"))?;
-
-    // 4. create disc directories
-    if disc_num == 1 {
-        // if there's only one disc, it's not necessary to create nested disc directories
-    } else {
-        // else, more discs, more directories
-        for i in 1..=disc_num {
-            let disc_path = user_album_path.join(format!("Disc {}", i));
-            fs::create_dir_all(&disc_path)?;
-        }
-    }
+    workspace.create_album(&album_id, &user_album_path, me.disc_num)?;
 
     Ok(())
 }

@@ -1,8 +1,8 @@
-use crate::workspace::utils::{find_workspace_root, scan_workspace};
-use crate::workspace::WorkspaceAlbumState;
+use anni_workspace::{AnniWorkspace, WorkspaceAlbumState};
 use clap::Args;
 use clap_handler::handler;
 use colored::Colorize;
+use std::env::current_dir;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use uuid::Uuid;
@@ -39,8 +39,10 @@ impl Display for DisplayUuid<'_> {
 
 #[handler(WorkspaceStatusAction)]
 pub async fn handle_workspace_status(me: WorkspaceStatusAction) -> anyhow::Result<()> {
-    let root = find_workspace_root()?;
-    let albums = scan_workspace(&root)?;
+    let workspace = AnniWorkspace::find(current_dir()?)?;
+    let albums = workspace.scan()?;
+
+    let root = workspace.workspace_root();
 
     if me.json {
         let json = serde_json::to_string(&albums)?;
@@ -49,6 +51,7 @@ pub async fn handle_workspace_status(me: WorkspaceStatusAction) -> anyhow::Resul
         let mut untracked: Vec<(&Path, DisplayUuid)> = vec![];
         let mut committed: Vec<(&Path, DisplayUuid)> = vec![];
         let mut dangling: Vec<(&Path, DisplayUuid)> = vec![];
+        let mut published: Vec<DisplayUuid> = vec![];
         let mut garbage: Vec<DisplayUuid> = vec![];
         for album in albums.iter() {
             match album.state {
@@ -64,6 +67,9 @@ pub async fn handle_workspace_status(me: WorkspaceStatusAction) -> anyhow::Resul
                     p.strip_prefix(&root)?,
                     DisplayUuid::new(&album.album_id, me.album_id),
                 )),
+                WorkspaceAlbumState::Published => {
+                    published.push(DisplayUuid::new(&album.album_id, me.album_id))
+                }
                 WorkspaceAlbumState::Garbage => {
                     garbage.push(DisplayUuid::new(&album.album_id, me.album_id))
                 }
@@ -95,6 +101,15 @@ pub async fn handle_workspace_status(me: WorkspaceStatusAction) -> anyhow::Resul
             for (path, album_id) in dangling {
                 let album_id = format!("[{album_id}]").bold();
                 let output = format!("{album_id}: {}", path.display()).red();
+                println!("\t{output}");
+            }
+            println!();
+        }
+
+        if !published.is_empty() {
+            println!("Published albums:");
+            for album_id in published {
+                let output = format!("{}", album_id).white();
                 println!("\t{output}");
             }
             println!();
