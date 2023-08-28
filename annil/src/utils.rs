@@ -42,16 +42,27 @@ pub fn opus_file_size(milliseconds: u64, bit_rate: u16, frame_size: u8) -> u64 {
     const FIXED_OGG_PAGE_HEADER_SIZE: u64 = 26 + 1;
     const MAX_DELAY: u64 = 1000;
 
-    let total_opus_packets = milliseconds.div_ceil(frame_size as u64);
-    let total_ogg_pages = total_opus_packets.div_ceil(MAX_DELAY / frame_size as u64);
+    let total_opus_packets = div_ceil(milliseconds, frame_size as u64);
+    let total_ogg_pages = div_ceil(total_opus_packets, MAX_DELAY / frame_size as u64);
 
     let opus_packet_size = bit_rate as u64 * frame_size as u64 / 8;
-    let opus_packages_per_ogg_page = opus_packet_size.div_ceil(0xff);
+    let opus_packages_per_ogg_page = div_ceil(opus_packet_size, 0xff);
 
     OGG_PREFIX_PAGES_SIZE
         + total_ogg_pages * FIXED_OGG_PAGE_HEADER_SIZE
         + opus_packages_per_ogg_page * total_opus_packets
         + total_opus_packets * opus_packet_size
+}
+
+/// Ported from https://doc.rust-lang.org/src/core/num/uint_macros.rs.html#2085
+const fn div_ceil(a: u64, b: u64) -> u64 {
+    let d = a / b;
+    let r = a % b;
+    if r > 0 && b > 0 {
+        d + 1
+    } else {
+        d
+    }
 }
 
 #[cfg(test)]
