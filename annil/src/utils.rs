@@ -36,24 +36,6 @@ where
     }
 }
 
-/// Calculate output size of opus file
-pub fn opus_file_size(milliseconds: u64, bit_rate: u16, frame_size: u8) -> u64 {
-    const OGG_PREFIX_PAGES_SIZE: u64 = 0x2f + 0x31a;
-    const FIXED_OGG_PAGE_HEADER_SIZE: u64 = 26 + 1;
-    const MAX_DELAY: u64 = 1000;
-
-    let total_opus_packets = milliseconds.div_ceil(frame_size as u64);
-    let total_ogg_pages = total_opus_packets.div_ceil(MAX_DELAY / frame_size as u64);
-
-    let opus_packet_size = bit_rate as u64 * frame_size as u64 / 8;
-    let opus_packages_per_ogg_page = opus_packet_size.div_ceil(0xff);
-
-    OGG_PREFIX_PAGES_SIZE
-        + total_ogg_pages * FIXED_OGG_PAGE_HEADER_SIZE
-        + opus_packages_per_ogg_page * total_opus_packets
-        + total_opus_packets * opus_packet_size
-}
-
 #[cfg(test)]
 mod tests {
     use crate::utils::opus_file_size;
