@@ -2,6 +2,7 @@ use crate::error::AnnilError;
 use crate::extractor::token::AnnilClaim;
 use crate::extractor::track::TrackIdentifier;
 use crate::provider::AnnilProvider;
+#[cfg(feature = "transcode")]
 use crate::transcode::*;
 use crate::utils::Either;
 use anni_provider::{AnniProvider, Range};
@@ -71,6 +72,7 @@ pub struct AudioQuery {
 }
 
 impl AudioQuery {
+    #[cfg(feature = "transcode")]
     pub fn get_transcoder(&self, is_guest: bool) -> Box<dyn Transcode + Send + Sync> {
         let quality = self.quality(is_guest);
         if quality.need_transcode() {
@@ -116,8 +118,12 @@ where
         .await
         .map_err(|_| AnnilError::NotFound);
 
-    let transcoder = query.get_transcoder(claim.is_guest());
-    let need_transcode = transcoder.need_transcode();
+    #[cfg(feature = "transcode")]
+    {let transcoder = query.get_transcoder(claim.is_guest());
+    let need_transcode = transcoder.need_transcode();}
+
+    #[cfg(not(feature = "transcode"))]
+    let need_transcode = false;
 
     return match audio {
         Ok(info) => {
@@ -125,7 +131,10 @@ where
                         (
                             CONTENT_TYPE,
                             if need_transcode {
-                                transcoder.content_type().to_string()
+                                #[cfg(feature = "transcode")]
+                                {transcoder.content_type().to_string()}
+                                #[cfg(not(feature = "transcode"))]
+                                {unreachable!()}
                             } else {
                                 format!("audio/{}", info.extension)
                             },
@@ -147,6 +156,7 @@ where
 
             let mut transcode_headers = HeaderMap::new();
 
+            #[cfg(feature = "transcode")]
             if let Some(length) = transcoder.content_length(&info) {
                 transcode_headers.insert(CONTENT_LENGTH, length.into());
             }
@@ -198,8 +208,9 @@ where
         return (StatusCode::NOT_FOUND, [(CACHE_CONTROL, "private")]).into_response();
     }
 
+    #[cfg(feature = "transcode")]
     let transcoder = query.get_transcoder(claim.is_guest());
-    let need_range = need_range && !transcoder.need_transcode(); // Only support range if transcode is not performed
+    let need_range = false; // Only support range if transcode is not performed
 
     // range is only supported on lossless
     #[cfg(feature = "transcode")]

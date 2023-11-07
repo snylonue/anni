@@ -5,6 +5,7 @@ pub mod state;
 pub mod utils;
 
 pub mod metadata;
+#[cfg(feature = "transcode")]
 mod transcode;
 
 pub mod error {
