@@ -1,4 +1,5 @@
-use config::{Config, ProviderItem};
+use anni_provider::cache::{CachePool, CacheProvider};
+use config::{CacheConfig, Config, ProviderItem};
 
 use anni_provider::fs::LocalFileSystemProvider;
 use anni_provider::providers::drive::DriveProviderSettings;
@@ -23,6 +24,19 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tower_http::cors;
 use tower_http::cors::CorsLayer;
+
+fn boxed_provider(
+    p: impl AnniProvider + Send + Sync + 'static,
+    cache_path: Option<CacheConfig>,
+) -> Box<dyn AnniProvider + Send + Sync> {
+    match cache_path {
+        Some(CacheConfig { root, max_size }) => Box::new(CacheProvider::new(
+            p,
+            Arc::new(CachePool::new(root, max_size)),
+        )),
+        None => Box::new(p),
+    }
+}
 
 async fn init_state(
     config: Config,
@@ -74,6 +88,7 @@ async fn init_state(
                     initial_token_path,
                     token_path,
                     strict: false,
+                    cache_conf,
                 },
                 Some(db),
             ) => {
@@ -82,7 +97,7 @@ async fn init_state(
                         let _ = std::fs::copy(initial_token_path, token_path.clone());
                     }
                 }
-                Box::new(
+                boxed_provider(
                     DriveProvider::new(
                         Default::default(),
                         DriveProviderSettings {
@@ -93,6 +108,7 @@ async fn init_state(
                         token_path.clone(),
                     )
                     .await?,
+                    cache_conf.clone(),
                 )
             }
             (
@@ -102,6 +118,7 @@ async fn init_state(
                     initial_token_path,
                     token_path,
                     strict: true,
+                    cache_conf,
                 },
                 _,
             ) => {
@@ -110,7 +127,7 @@ async fn init_state(
                         let _ = std::fs::copy(initial_token_path, token_path.clone());
                     }
                 }
-                Box::new(
+                boxed_provider(
                     DriveProvider::new(
                         Default::default(),
                         DriveProviderSettings {
@@ -121,6 +138,7 @@ async fn init_state(
                         token_path.clone(),
                     )
                     .await?,
+                    cache_conf.clone(),
                 )
             }
             (_, None) => {
@@ -256,6 +274,12 @@ mod config {
         pub item: ProviderItem,
     }
 
+    #[derive(Debug, Deserialize, Clone)]
+    pub struct CacheConfig {
+        pub root: PathBuf,
+        pub max_size: Option<usize>,
+    }
+
     #[derive(Deserialize)]
     #[serde(tag = "type")]
     pub enum ProviderItem {
@@ -276,6 +300,7 @@ mod config {
             token_path: PathBuf,
             #[serde(default)]
             strict: bool,
+            cache_conf: Option<CacheConfig>,
         },
     }
 
