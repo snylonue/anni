@@ -3,9 +3,12 @@ use crate::{
     Range, ResourceReader,
 };
 use anni_google_drive3::{
-    hyper, hyper::client::HttpConnector, hyper_rustls::HttpsConnector, oauth2, DriveHub,
+    hyper::{self, client::HttpConnector, Client},
+    hyper_rustls::HttpsConnector,
+    oauth2, DriveHub,
 };
 use async_trait::async_trait;
+use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU8;
@@ -23,6 +26,8 @@ use futures::TryStreamExt;
 use parking_lot::Mutex;
 use std::str::FromStr;
 use tokio::sync::Semaphore;
+
+type Connector = ProxyConnector<HttpsConnector<HttpConnector>>;
 
 pub enum DriveAuth {
     InstalledFlow {
@@ -48,7 +53,8 @@ impl DriveAuth {
     pub async fn build(
         self,
         token_storage: TokenStorage,
-    ) -> std::io::Result<Authenticator<HttpsConnector<HttpConnector>>> {
+        client: Client<Connector>,
+    ) -> std::io::Result<Authenticator<Connector>> {
         match self {
             DriveAuth::InstalledFlow {
                 client_id,
@@ -71,6 +77,7 @@ impl DriveAuth {
                     },
                     oauth2::InstalledFlowReturnMethod::Interactive,
                 )
+                .hyper_client(client)
                 .flow_delegate(Box::new(DefaultInstalledFlowDelegate));
                 match token_storage {
                     TokenStorage::Disk(path) => builder.persist_tokens_to_disk(path),
@@ -81,7 +88,7 @@ impl DriveAuth {
                 .await
             }
             DriveAuth::ServiceAccount(sa) => {
-                let builder = oauth2::ServiceAccountAuthenticator::builder(sa);
+                let builder = oauth2::ServiceAccountAuthenticator::builder(sa).hyper_client(client);
                 match token_storage {
                     TokenStorage::Disk(path) => builder.persist_tokens_to_disk(path),
                     TokenStorage::Custom(storage) => builder.with_storage(storage),
@@ -116,8 +123,9 @@ impl DriveProviderSettings {
         Self { corpora, drive_id }
     }
 }
+
 pub struct DriveClient {
-    hub: Box<DriveHub<HttpsConnector<HttpConnector>>>,
+    hub: Box<DriveHub<Connector>>,
     settings: DriveProviderSettings,
     /// Semaphore for rate limiting
     semaphore: Semaphore,
@@ -132,23 +140,33 @@ impl DriveClient {
         settings: DriveProviderSettings,
         token_storage: impl Into<TokenStorage>,
     ) -> Result<Self, ProviderError> {
-        let auth = auth.build(token_storage.into()).await?;
+        let proxy = {
+            let (through, intercept) = match std::env::var("https_proxy") {
+                Ok(uri) => (uri, Intercept::All),
+                _ => {
+                    log::warn!("fail to read https_proxy, disabling proxy");
+                    ("127.0.0.1".to_string(), Intercept::None)
+                }
+            };
+            Proxy::new(intercept, through.parse().unwrap())
+        };
+        let client = hyper::Client::builder().build(ProxyConnector::from_proxy(
+            HttpsConnectorBuilder::new()
+                .with_native_roots()
+                .https_or_http()
+                .enable_http1()
+                .enable_http2()
+                .build(),
+            proxy,
+        )?);
+        let auth = auth.build(token_storage.into(), client.clone()).await?;
         auth.token(&[
             "https://www.googleapis.com/auth/drive.metadata.readonly",
             "https://www.googleapis.com/auth/drive.readonly",
         ])
         .await?;
-        let hub = DriveHub::new(
-            hyper::Client::builder().build(
-                HttpsConnectorBuilder::new()
-                    .with_native_roots()
-                    .https_or_http()
-                    .enable_http1()
-                    .enable_http2()
-                    .build(),
-            ),
-            auth,
-        );
+
+        let hub = DriveHub::new(client, auth);
         Ok(Self {
             hub: Box::new(hub),
             settings,
@@ -157,7 +175,7 @@ impl DriveClient {
         })
     }
 
-    fn prepare_list(&self) -> FileListCall<HttpsConnector<HttpConnector>> {
+    fn prepare_list(&self) -> FileListCall<Connector> {
         let result = self
             .hub
             .files()

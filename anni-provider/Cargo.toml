@@ -29,12 +29,13 @@ dashmap = "5.2.0"
 lru = "0.12.0"
 anni-flac = { version = "0.2.2", path = "../anni-flac", features = ["async"] }
 reqwest = { workspace = true, features = ["json", "stream"], optional = true }
+hyper-proxy = { version = "0.9", optional = true }
 
 [features]
 default = ["full"]
 full = ["convention", "drive", "proxy", "strict", "priority"]
 convention = ["repo"]
-drive = ["repo", "anni-google-drive3"]
+drive = ["repo", "anni-google-drive3", "hyper-proxy"]
 proxy = ["reqwest"]
 repo = ["anni-repo"]
 strict = []
