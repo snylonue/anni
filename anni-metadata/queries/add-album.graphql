@@ -1,0 +1,46 @@
+fragment AlbumDetail on Album {
+  id
+  albumId
+  level
+
+  title
+  edition
+  catalog
+  artist
+
+  year
+  month
+  day
+
+  createdAt
+  updatedAt
+
+  discs {
+    id
+    index
+    title
+    catalog
+    artist
+
+    createdAt
+    updatedAt
+
+    tracks {
+      id
+      index
+      title
+      artist
+      artists
+      type
+
+      createdAt
+      updatedAt
+    }
+  }
+}
+
+mutation addAlbum($album: AddAlbumInput!) {
+  addAlbum(input: $album) {
+    ...AlbumDetail
+  }
+}
