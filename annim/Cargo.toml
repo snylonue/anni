@@ -20,7 +20,7 @@ async-graphql = { version = "7.0.0", features = [
     "graphiql",
     "raw_value",
 ] }
-async-graphql-axum = "7.0.0"
+async-graphql-axum = "7.0.17"
 sea-orm = { version = "1.0.0", features = [
     "sqlx-sqlite",
     "sqlx-postgres",
