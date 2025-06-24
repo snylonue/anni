@@ -5,6 +5,7 @@ use anni_provider::providers::CommonConventionProvider;
 use anni_provider::strict_album_path;
 use anni_repo::db::RepoDatabaseRead;
 use anni_repo::library::{file_name, AlbumFolderInfo};
+use anni_repo::models::ApplyMetadata;
 use anni_repo::RepositoryManager;
 use clap::{Args, Subcommand};
 use clap_handler::{handler, Context, Handler};
@@ -68,7 +69,7 @@ pub fn library_apply_tag(
                 .albums()
                 .get(&Uuid::parse_str(folder_name.as_ref())?)
                 .ok_or_else(|| anyhow::anyhow!("Album {} not found", folder_name))?;
-            album.apply_strict(&path)?;
+            album.apply_strict(&path, true)?;
         } else if let Ok(AlbumFolderInfo {
             release_date,
             catalog,

@@ -4,9 +4,8 @@ use crate::extractor::track::TrackIdentifier;
 use crate::provider::AnnilProvider;
 #[cfg(feature = "transcode")]
 use crate::transcode::*;
-use crate::utils::Either;
 use anni_provider::{AnniProvider, Range};
-use axum::body::StreamBody;
+use axum::body::Body;
 use axum::extract::Query;
 use axum::http::header::{
     ACCEPT_RANGES, ACCESS_CONTROL_EXPOSE_HEADERS, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_RANGE,
@@ -258,6 +257,8 @@ where
             ];
 
             #[cfg(feature = "transcode")]
+            use crate::utils::Either;
+            #[cfg(feature = "transcode")]
             let body = if transcoder.quality().need_transcode() {
                 let mut transcode_headers = HeaderMap::new();
                 let info = audio.info.clone();
@@ -279,12 +280,12 @@ where
                 if let Some(length) = transcoder.content_length(&info) {
                     Either::Left((
                         transcode_headers,
-                        Either::Left(StreamBody::new(ReaderStream::new(stdout).take(length))),
+                        Either::Left(Body::from_stream(ReaderStream::new(stdout).take(length))),
                     ))
                 } else {
                     Either::Left((
                         transcode_headers,
-                        Either::Right(StreamBody::new(ReaderStream::new(stdout))),
+                        Either::Right(Body::from_stream(ReaderStream::new(stdout))),
                     ))
                 }
             } else {
@@ -294,7 +295,7 @@ where
                         (CONTENT_TYPE, format!("audio/{}", audio.info.extension)),
                         (CONTENT_LENGTH, format!("{size}")),
                     ],
-                    StreamBody::new(ReaderStream::new(audio.reader).take(size as usize)),
+                    Body::from_stream(ReaderStream::new(audio.reader).take(size as usize)),
                 ))
             };
 
@@ -306,7 +307,7 @@ where
                         (CONTENT_LENGTH, format!("{size}")),
                         (CONTENT_TYPE, format!("audio/{}", audio.info.extension)),
                     ],
-                    StreamBody::new(ReaderStream::new(audio.reader).take(size as usize)),
+                    Body::from_stream(ReaderStream::new(audio.reader).take(size as usize)),
                 )
             };
 

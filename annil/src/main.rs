@@ -13,12 +13,13 @@ use annil::route::user;
 use annil::state::{AnnilKeys, AnnilState};
 use axum::http::Method;
 use axum::routing::{get, post};
-use axum::{Extension, Router, Server};
+use axum::{Extension, Router};
 use jwt_simple::prelude::HS256Key;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tower_http::cors;
 use tower_http::cors::CorsLayer;
@@ -202,16 +203,15 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(Arc::new(provider)))
         .layer(Extension(Arc::new(keys)));
 
-    Server::bind(&listen)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = TcpListener::bind(&listen).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
 
 mod config {
     use annil::metadata::MetadataConfig;
+    use anyhow::Context;
     use serde::Deserialize;
     use std::collections::HashMap;
     use std::fs;
@@ -227,8 +227,9 @@ mod config {
 
     impl Config {
         pub fn from_file<P: AsRef<Path>>(config_path: P) -> anyhow::Result<Self> {
-            let string = fs::read_to_string(config_path)?;
-            let result = toml::from_str(&string)?;
+            let string =
+                fs::read_to_string(config_path).with_context(|| "Failed to load config file")?;
+            let result = toml::from_str(&string).with_context(|| "Failed to parse config file")?;
             Ok(result)
         }
     }

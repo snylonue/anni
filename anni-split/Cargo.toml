@@ -9,9 +9,9 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-anni-common = { path = "../anni-common" }
+anni-common.workspace = true
 
 thiserror.workspace = true
 log.workspace = true
-which = "4.4.0"
+which = "5.0.0"
 cuna = "0.7.0"

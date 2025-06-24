@@ -1,26 +1,28 @@
 mod add;
 mod get;
 mod lint;
+mod migrate;
 mod print;
 mod watch;
 
 use crate::args::ActionFile;
 use crate::{ball, fl, ll};
 use add::*;
-use anni_workspace::AnniWorkspace;
-use lint::*;
-use print::*;
-use watch::*;
-
+use anni_metadata::model::Album;
 use anni_repo::library::{file_name, AlbumFolderInfo};
-use anni_repo::prelude::*;
+use anni_repo::models::JsonAlbum;
 use anni_repo::RepositoryManager;
+use anni_workspace::AnniWorkspace;
 use clap::{Args, Subcommand, ValueEnum};
 use clap_handler::{handler, Context, Handler};
 use get::RepoGetAction;
+use lint::*;
+use migrate::RepoMigrateAction;
+use print::*;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use watch::*;
 
 #[derive(Args, Debug, Clone, Handler)]
 #[clap(about = ll!("repo"))]
@@ -72,6 +74,7 @@ pub enum RepoAction {
     #[clap(about = ll!("repo-db"))]
     Database(RepoDatabaseAction),
     Watch(RepoWatchAction),
+    Migrate(RepoMigrateAction),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -102,26 +105,30 @@ pub struct RepoImportAction {
     #[clap(short = 'f', long, default_value = "toml")]
     format: RepoImportFormat,
 
-    file: ActionFile,
+    files: Vec<ActionFile>,
 }
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum RepoImportFormat {
-    // Json,
+    Json,
     Toml,
 }
 
 #[handler(RepoImportAction)]
 fn repo_import(me: &RepoImportAction, manager: &RepositoryManager) -> anyhow::Result<()> {
-    let mut reader = me.file.to_reader()?;
-    let mut result = String::new();
-    reader.read_to_string(&mut result)?;
+    for file in me.files.iter() {
+        let mut reader = file.to_reader()?;
+        let mut result = String::new();
+        reader.read_to_string(&mut result)?;
 
-    match me.format {
-        RepoImportFormat::Toml => {
-            let album = Album::from_str(&result)?;
-            manager.add_album(album, me.allow_duplicate)?;
-        }
+        let album = match me.format {
+            RepoImportFormat::Toml => Album::from_str(&result)?,
+            RepoImportFormat::Json => {
+                let album = JsonAlbum::from_str(&result)?;
+                album.try_into()?
+            }
+        };
+        manager.add_album(album, me.allow_duplicate)?;
     }
     Ok(())
 }

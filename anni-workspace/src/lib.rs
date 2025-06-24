@@ -5,8 +5,9 @@ mod utils;
 
 use crate::config::WorkspaceConfig;
 use anni_common::fs;
+use anni_metadata::model::AnniDate;
 use anni_repo::library::file_name;
-use anni_repo::prelude::{AnniDate, UNKNOWN_ARTIST};
+use anni_repo::models::ApplyMetadata;
 use anni_repo::RepositoryManager;
 use config::LibraryConfig;
 use std::borrow::Cow;
@@ -95,6 +96,14 @@ impl AnniWorkspace {
     /// Get root path of internal audio files
     pub fn objects_root(&self) -> PathBuf {
         self.dot_anni.join("objects")
+    }
+
+    /// Get path of the config file.
+    ///
+    /// This method is used for internal use only.
+    #[doc(hidden)]
+    pub fn config_path(&self) -> PathBuf {
+        self.dot_anni.join("config.toml")
     }
 
     /// Get album id from symlink target.
@@ -306,6 +315,14 @@ impl AnniWorkspace {
     pub fn get_config(&self) -> Result<WorkspaceConfig, WorkspaceError> {
         WorkspaceConfig::new(&self.dot_anni)
     }
+
+    /// Remove the whole workspace.
+    ///
+    /// The operation is irreversible and marked as unsafe.
+    pub unsafe fn destroy(&self) -> Result<(), WorkspaceError> {
+        fs::remove_dir_all(self.workspace_root(), true)?;
+        Ok(())
+    }
 }
 
 pub struct ExtractedAlbumInfo<'a> {
@@ -481,85 +498,6 @@ impl AnniWorkspace {
         Ok(album_id)
     }
 
-    /// Import tag from **committed** album.
-    pub fn import_tags<P, E>(
-        &self,
-        album_path: P,
-        extractor: E,
-        allow_duplicate: bool,
-    ) -> Result<Uuid, WorkspaceError>
-    where
-        P: AsRef<Path>,
-        E: FnOnce(&str) -> Option<ExtractedAlbumInfo>,
-    {
-        use anni_repo::prelude::{Album, AlbumInfo, Disc, DiscInfo};
-
-        let album_id = self.get_album_id(album_path.as_ref())?;
-        let repo = self.to_repository_manager()?;
-        let folder_name = file_name(&album_path)?;
-        let ExtractedAlbumInfo {
-            release_date,
-            catalog,
-            title,
-            edition,
-            ..
-        } = extractor(&folder_name).ok_or_else(|| WorkspaceError::FailedToExtractAlbumInfo)?;
-
-        let album_path = self.get_album_controlled_path(&album_id)?;
-        let mut discs = Vec::new();
-        loop {
-            let disc_id = discs.len() + 1;
-            let disc_path = album_path.join(disc_id.to_string());
-            if !disc_path.exists() {
-                break;
-            }
-
-            let mut tracks = Vec::new();
-            loop {
-                let track_id = tracks.len() + 1;
-                let track_path = disc_path.join(format!("{track_id}.flac"));
-                if !track_path.exists() {
-                    break;
-                }
-
-                let flac = anni_flac::FlacHeader::from_file(&track_path).map_err(|error| {
-                    WorkspaceError::FlacError {
-                        path: track_path,
-                        error,
-                    }
-                })?;
-                tracks.push(flac.into())
-            }
-            discs.push(Disc::new(
-                DiscInfo::new(
-                    catalog.to_string(),
-                    None,
-                    None,
-                    None,
-                    None,
-                    Default::default(),
-                ),
-                tracks,
-            ));
-        }
-
-        let album = Album::new(
-            AlbumInfo {
-                album_id,
-                title: title.to_string(),
-                edition: edition.map(|c| c.to_string()),
-                artist: UNKNOWN_ARTIST.to_string(),
-                release_date,
-                catalog: catalog.to_string(),
-                ..Default::default()
-            },
-            discs,
-        );
-        repo.add_album(album, allow_duplicate)?;
-
-        Ok(album_id)
-    }
-
     pub fn revert<P>(&self, path: P) -> Result<(), WorkspaceError>
     where
         P: AsRef<Path>,
@@ -610,7 +548,7 @@ impl AnniWorkspace {
         Ok(())
     }
 
-    pub fn apply_tags<P>(&self, album_path: P) -> Result<(), WorkspaceError>
+    pub fn apply_tags<P>(&self, album_path: P, detailed: bool) -> Result<(), WorkspaceError>
     where
         P: AsRef<Path>,
     {
@@ -624,7 +562,7 @@ impl AnniWorkspace {
         let album = repo
             .album(&album_id)
             .expect("Album not found in metadata repository");
-        album.apply_strict(controlled_album_path)?;
+        album.apply_strict(controlled_album_path, detailed)?;
 
         Ok(())
     }

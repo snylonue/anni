@@ -1,0 +1,68 @@
+fragment AlbumDetail on Album {
+    id
+    albumId
+    level
+
+    title
+    edition
+    catalog
+    artist
+
+    year
+    month
+    day
+
+    tags {
+        ...TagBase
+    }
+
+    createdAt
+    updatedAt
+    extra
+
+    discs {
+        id
+        index
+        title
+        catalog
+        artist
+
+        tags {
+            ...TagBase
+        }
+
+        createdAt
+        updatedAt
+
+        tracks {
+            id
+            index
+            title
+            artist
+            type
+            artists
+
+            tags {
+                ...TagBase
+            }
+
+            createdAt
+            updatedAt
+        }
+    }
+}
+
+fragment TagBase on Tag {
+    id
+    name
+    type
+
+    createdAt
+    updatedAt
+}
+
+mutation setMetadataTags($target: MetadataIDInput!, $tags: [ID!]!) {
+    updateMetadataTags(input: $target, tags: $tags) {
+        ...AlbumDetail
+    }
+}

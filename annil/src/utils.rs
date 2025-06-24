@@ -53,4 +53,67 @@ mod tests {
     fn test_sakuranotoki_opus_size() {
         assert_eq!(opus_file_size(80361372 * 1000 / 44100, 64, 20), 14719255);
     }
+
+    #[test]
+    fn test_silence_opus_size() {
+        // New logical stream (#1, serial: 5219954f): type opus
+        // Encoded with libopus 1.4, libopusenc 0.2.1
+        // User comments section follows...
+        // 	ENCODER=opusenc from opus-tools 0.2
+        // 	ENCODER_OPTIONS=--bitrate 64 --hard-cbr --music --comp 0 --discard-comments --discard-pictures
+        // Opus stream 1:
+        // 	Pre-skip: 312
+        // 	Playback gain: 0 dB
+        // 	Channels: 2
+        // 	Original sample rate: 48000 Hz
+        // 	Packet duration:   20.0ms (max),   20.0ms (avg),   20.0ms (min)
+        // 	Page duration:   1000.0ms (max),  610.0ms (avg),  220.0ms (min)
+        // 	Total data length: 10716 bytes (overhead: 8.92%)
+        // 	Playback length: 0m:01.201s
+        // 	Average bitrate: 71.38 kbit/s, w/o overhead: 65.01 kbit/s (hard-CBR)
+        // Logical stream 1 ended
+        assert_eq!(opus_file_size(1200, 64, 20), 10716);
+        assert_eq!(opus_file_size(1201, 64, 20), 10716);
+
+        // New logical stream (#1, serial: 1d1a460c): type opus
+        // Encoded with libopus 1.4, libopusenc 0.2.1
+        // User comments section follows...
+        // 	ENCODER=opusenc from opus-tools 0.2
+        // 	ENCODER_OPTIONS=--bitrate 192 --hard-cbr --music --framesize 20 --comp 0 --discard-comments --discard-pictures
+        // Opus stream 1:
+        // 	Pre-skip: 312
+        // 	Playback gain: 0 dB
+        // 	Channels: 2
+        // 	Original sample rate: 44100 Hz
+        // 	Packet duration:   20.0ms (max),   20.0ms (avg),   20.0ms (min)
+        // 	Page duration:   1000.0ms (max),  996.5ms (avg),  100.0ms (min)
+        // 	Total data length: 6107409 bytes (overhead: 0.54%)
+        // 	Playback length: 4m:13.079s
+        // 	Average bitrate: 193.1 kbit/s, w/o overhead: 192 kbit/s (hard-CBR)
+        // Logical stream 1 ended
+        assert_eq!(opus_file_size(253080, 192, 20), 6107409);
+
+        assert_eq!(opus_file_size(1100, 64, 20), 9911);
+    }
+
+    #[test]
+    fn test_large_packet_size() {
+        // For large packets, it should not always use 60ms for the last packet
+        // If the last packet actually needs 0~19ms, then use a 20ms packet
+        // If the last packet actually needs 20~39ms, then use a 40ms packet
+        // If the last packet actually needs 40~59ms, then use a 60ms packet
+        // FIXME: replace assert_ne below with assert_eq when the bug is fixed
+        assert_eq!(opus_file_size(1200, 64, 60), 10696);
+        assert_eq!(opus_file_size(1201, 64, 60), 10696);
+        assert_eq!(opus_file_size(1220, 64, 60), 10857); // 1.24
+        assert_eq!(opus_file_size(1221, 64, 60), 10857);
+        assert_eq!(opus_file_size(1233, 64, 60), 10857);
+        assert_eq!(opus_file_size(1234, 64, 60), 11017); // 1.26
+        assert_eq!(opus_file_size(1235, 64, 60), 11017);
+        assert_eq!(opus_file_size(1240, 64, 60), 11017);
+        assert_eq!(opus_file_size(1251, 64, 60), 11017);
+        assert_eq!(opus_file_size(1253, 64, 60), 11017);
+        assert_eq!(opus_file_size(1254, 64, 60), 11178); // 1.28
+        assert_eq!(opus_file_size(1259, 64, 60), 11178);
+    }
 }

@@ -1,8 +1,6 @@
 use crate::{args::ActionFile, ll};
-use anni_repo::{
-    prelude::{JsonAlbum, TagRef},
-    OwnedRepositoryManager, RepositoryManager,
-};
+use anni_metadata::model::TagRef;
+use anni_repo::{prelude::JsonAlbum, OwnedRepositoryManager, RepositoryManager};
 use clap::{crate_version, ArgAction, Args, ValueEnum};
 use clap_handler::handler;
 use ptree::TreeBuilder;
@@ -95,7 +93,7 @@ FILE "{filename}" WAVE
                 _ => unreachable!(),
             }
         }
-        RepoPrintType::Toml | RepoPrintType::Json => {
+        RepoPrintType::Toml | RepoPrintType::Json | RepoPrintType::Path => {
             let text = if let Ok(album_id) = Uuid::parse_str(&me.input) {
                 // me.input -> album_id
                 let manager = manager.into_owned_manager()?;
@@ -112,6 +110,13 @@ FILE "{filename}" WAVE
                         let album = JsonAlbum::from(album.clone());
                         serde_json::to_string(&album)?
                     }
+                    RepoPrintType::Path => {
+                        let root = manager.repo.root();
+                        let album = manager.album_path(&album_id).expect("Album not found!");
+                        let album = root.join(album);
+                        let album = album.canonicalize()?;
+                        album.display().to_string()
+                    }
                     _ => unreachable!(),
                 }
             } else {
@@ -123,6 +128,9 @@ FILE "{filename}" WAVE
                         let album = album.get(0).expect("Album not found!");
                         let album = JsonAlbum::from(album.clone());
                         serde_json::to_string(&album)?
+                    }
+                    RepoPrintType::Path => {
+                        todo!()
                     }
                     _ => unreachable!(),
                 }
@@ -179,5 +187,6 @@ pub enum RepoPrintType {
     Cue,
     Toml,
     Json,
+    Path,
     TagTree,
 }

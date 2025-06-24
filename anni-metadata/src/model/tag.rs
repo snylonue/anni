@@ -1,13 +1,13 @@
-use crate::error::Error;
-use crate::prelude::RepoResult;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use toml::Value;
+
+use crate::error::Error;
 
 /// Simple reference to a tag with its name and edition.
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
@@ -59,7 +59,11 @@ impl<'a> TagRef<'a> {
         &self.tag_type
     }
 
-    fn full_clone(&self) -> TagRef<'static> {
+    pub fn set_tag_type(&mut self, value: TagType) {
+        self.tag_type = value;
+    }
+
+    pub fn full_clone(&self) -> TagRef<'static> {
         TagRef {
             name: Cow::Owned(self.name.to_string()),
             tag_type: self.tag_type.clone(),
@@ -119,24 +123,6 @@ impl TagString {
     pub fn tag_type(&self) -> &TagType {
         self.0.tag_type()
     }
-
-    pub(crate) fn resolve(
-        &mut self,
-        tags: &HashMap<String, HashMap<TagType, Tag>>,
-    ) -> RepoResult<()> {
-        if let TagType::Unknown = self.tag_type {
-            if let Some(tags) = tags.get(self.name()) {
-                if tags.len() > 1 {
-                    return Err(Error::RepoTagDuplicated(self.full_clone()));
-                }
-
-                let actual_type = tags.values().next().unwrap().tag_type().clone();
-                self.0.tag_type = actual_type;
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl Deref for TagString {
@@ -144,6 +130,12 @@ impl Deref for TagString {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for TagString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -263,7 +255,7 @@ impl FromStr for TagType {
             "organization" => Self::Organization,
             "category" => Self::Category,
             "unknown" => Self::Unknown,
-            _ => return Err(Error::RepoTagUnknownType(s.to_string())),
+            _ => return Err(Error::InvalidTagType(s.to_string())),
         })
     }
 }
@@ -305,8 +297,11 @@ impl Tag {
         self.inner.tag_type()
     }
 
-    pub fn parents(&self) -> &[TagString] {
-        &self.parents
+    pub fn parents<'me, 'tag>(&'me self) -> impl Iterator<Item = &'me TagRef<'tag>>
+    where
+        'tag: 'me,
+    {
+        self.parents.iter().map(|i| &i.0)
     }
 
     pub fn simple_children<'me, 'tag>(&'me self) -> impl Iterator<Item = &'me TagRef<'tag>>
@@ -343,7 +338,7 @@ impl Tags {
 
 #[cfg(test)]
 mod tests {
-    use crate::models::{TagRef, TagString, TagType};
+    use crate::model::{TagRef, TagString, TagType};
 
     #[test]
     fn test_tag_string_serialize() {

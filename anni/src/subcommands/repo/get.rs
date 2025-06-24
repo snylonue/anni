@@ -1,6 +1,12 @@
 use crate::{ball, ll};
 use anni_common::fs;
-use anni_repo::prelude::*;
+use anni_metadata::model::Album;
+use anni_metadata::model::AlbumInfo;
+use anni_metadata::model::AnniDate;
+use anni_metadata::model::Disc;
+use anni_metadata::model::DiscInfo;
+use anni_metadata::model::Track;
+use anni_metadata::model::TrackType;
 use anni_repo::RepositoryManager;
 use anni_vgmdb::VGMClient;
 use chrono::Datelike;
@@ -11,6 +17,7 @@ use musicbrainz_rs::entity::artist_credit::ArtistCredit;
 use musicbrainz_rs::entity::release::Release;
 use musicbrainz_rs::Fetch;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 #[derive(Args, Handler, Debug, Clone)]
 pub struct RepoGetAction {
@@ -189,6 +196,13 @@ async fn repo_get_cue(
 
 #[derive(Args, Debug, Clone)]
 pub struct RepoGetMusicbrainz {
+    #[clap(
+        env = "MUSICBRAINZ_BASE_URL",
+        default_value = "https://musicbrainz.org/ws/2"
+    )]
+    #[clap(long)]
+    base_url: String,
+
     #[clap(long)]
     id: String,
     catalog: String,
@@ -200,6 +214,8 @@ async fn repo_get_musicbrainz(
     manager: &RepositoryManager,
     get: &RepoGetAction,
 ) -> anyhow::Result<()> {
+    musicbrainz_rs::config::set_base_url(options.base_url);
+
     let release = Release::fetch()
         .id(&options.id)
         .with_release_groups()
@@ -261,6 +277,9 @@ async fn repo_get_musicbrainz(
 
     let mut album = Album::new(
         AlbumInfo {
+            album_id: Uuid::parse_str(&options.id)
+                .ok()
+                .unwrap_or_else(Uuid::new_v4),
             title: release.title,
             artist,
             release_date,
