@@ -1,3 +1,5 @@
+use std::io;
+
 use anni_common::fs;
 use anni_workspace::{AnniWorkspace, WorkspaceAlbumState};
 use clap::Args;
@@ -19,7 +21,7 @@ fn handle_workspace_fsck(me: WorkspaceFsckAction) -> anyhow::Result<()> {
         let albums = workspace.scan()?;
         for album in albums {
             if let WorkspaceAlbumState::Dangling(album_path) = album.state {
-                let result: anyhow::Result<()> = try {
+                let result: Result<(), io::Error> = try {
                     let dot_album = album_path.join(".album");
                     let real_path = workspace.controlled_album_path(&album.album_id, 2);
                     if !real_path.exists() {
@@ -44,7 +46,7 @@ fn handle_workspace_fsck(me: WorkspaceFsckAction) -> anyhow::Result<()> {
         let albums = workspace.scan()?;
         for album in albums {
             if let WorkspaceAlbumState::Garbage = album.state {
-                let result: anyhow::Result<()> = try {
+                let result: Result<(), io::Error> = try {
                     if let Ok(real_path) = workspace.get_album_controlled_path(&album.album_id) {
                         // 1. remove garbage album directory
                         fs::remove_dir_all(&real_path, true)?;
