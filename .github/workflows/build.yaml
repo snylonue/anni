@@ -100,7 +100,7 @@ jobs:
           DOCKER_BUILDKIT: 1
 
       - name: Deploy | Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
