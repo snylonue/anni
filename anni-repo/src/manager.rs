@@ -509,7 +509,7 @@ impl OwnedRepositoryManager {
 
         let db = crate::db::RepoDatabaseWrite::create(database_path.as_ref())?;
         // TODO: get url / ref from repo
-        db.write_info(self.repo.name(), self.repo.edition(), "", "")?;
+        let _ = db.write_info(self.repo.name(), self.repo.edition(), "", "");
 
         // Write all tags
         let tags = self.tags_iter();
