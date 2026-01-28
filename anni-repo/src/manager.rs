@@ -505,7 +505,7 @@ impl OwnedRepositoryManager {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         // remove database first
-        let _ = std::fs::remove_file(database_path.as_ref());
+        // let _ = std::fs::remove_file(database_path.as_ref());
 
         let db = crate::db::RepoDatabaseWrite::create(database_path.as_ref())?;
         // TODO: get url / ref from repo
