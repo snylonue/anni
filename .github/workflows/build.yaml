@@ -52,14 +52,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --locked --target ${{ matrix.target }}" --workspace --exclude anni-playback
+          args: --release --locked --target ${{ matrix.target }}" -p anni
 
       - name: PostBuild | Prepare artifacts [Windows]
         if: matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
           strip anni.exe
-          7z a ../../../${{ matrix.name }} anni.exe annil.exe annim.exe
+          7z a ../../../${{ matrix.name }} anni.exe
           cd -
 
       - name: PostBuild | Prepare artifacts [-nix]
@@ -67,7 +67,7 @@ jobs:
         run: |
           cd target/${{ matrix.target }}/release
           strip anni || true
-          tar czvf ../../../${{ matrix.name }} anni annil annim
+          tar czvf ../../../${{ matrix.name }} anni
           cd -
 
       - name: Docker | Prepare Context
