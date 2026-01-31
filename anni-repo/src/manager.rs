@@ -559,7 +559,6 @@ impl OwnedRepositoryManager {
             );
             tags.sort_by_key(|tag| (tag.name(), tag.tag_type()));
             tags.dedup_by_key(|tag| (tag.name(), tag.tag_type()));
-            println!("{tags:#?}");
             tags.into_iter()
         };
         db.add_tags(tags)?;
