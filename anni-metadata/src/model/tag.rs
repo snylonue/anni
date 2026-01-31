@@ -208,7 +208,7 @@ pub struct Tag {
     children: Vec<TagString>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum TagType {
     Artist,

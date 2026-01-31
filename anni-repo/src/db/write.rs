@@ -221,6 +221,7 @@ COMMIT;
     }
 
     fn add_tag(&self, name: &str, tag_type: &TagType) -> RepoResult<i32> {
+        println!("{} {}", name, tag_type);
         self.conn.execute(
             "INSERT INTO repo_tag (name, tag_type) VALUES (?, ?)",
             params![name, tag_type.to_string(),],

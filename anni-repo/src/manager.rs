@@ -5,6 +5,7 @@ use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use toml_edit::Item;
 use uuid::Uuid;
 
 /// A simple repository visitor. Can perform simple operations on the repository.
@@ -505,11 +506,11 @@ impl OwnedRepositoryManager {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         // remove database first
-        // let _ = std::fs::remove_file(database_path.as_ref());
+        let _ = std::fs::remove_file(database_path.as_ref());
 
         let db = crate::db::RepoDatabaseWrite::create(database_path.as_ref())?;
         // TODO: get url / ref from repo
-        let _ = db.write_info(self.repo.name(), self.repo.edition(), "", "");
+        db.write_info(self.repo.name(), self.repo.edition(), "", "")?;
 
         // Write all tags
         let tags = self.tags_iter();
@@ -517,6 +518,66 @@ impl OwnedRepositoryManager {
 
         // Write all albums
         for album in self.albums_iter() {
+            db.add_album(album)?;
+        }
+
+        // Create Index
+        db.create_index()?;
+
+        // Creation time
+        fs::write(
+            database_path.as_ref().with_file_name("repo.json"),
+            format!(
+                "{{\"last_modified\": {}}}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            ),
+        )?;
+        Ok(())
+    }
+
+    #[cfg(feature = "db-write")]
+    pub fn apply_overlay<'a, P>(
+        &self,
+        overlays: Vec<OwnedRepositoryManager>,
+        database_path: P,
+    ) -> RepoResult<()>
+    where
+        P: AsRef<Path>,
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let db = crate::db::RepoDatabaseWrite::create(database_path.as_ref())?;
+
+        // Write all tags
+        let tags = {
+            let mut tags = Vec::from_iter(
+                self.tags_iter()
+                    .chain(overlays.iter().map(|overlay| overlay.tags_iter()).flatten()),
+            );
+            tags.sort_by_key(|tag| (tag.name(), tag.tag_type()));
+            tags.dedup_by_key(|tag| (tag.name(), tag.tag_type()));
+            println!("{tags:#?}");
+            tags.into_iter()
+        };
+        db.add_tags(tags)?;
+
+        // Write all albums
+        for album in {
+            let mut albums = Vec::from_iter(
+                self.albums_iter().chain(
+                    overlays
+                        .iter()
+                        .map(|overlay| overlay.albums_iter())
+                        .flatten(),
+                ),
+            );
+            albums.sort_by_key(|album| album.album_id());
+            albums.dedup_by_key(|album| album.album_id());
+            albums.into_iter()
+        } {
             db.add_album(album)?;
         }
 

@@ -73,6 +73,8 @@ pub enum RepoAction {
     #[clap(name = "db")]
     #[clap(about = ll!("repo-db"))]
     Database(RepoDatabaseAction),
+    #[clap(name = "overlay")]
+    Overlay(RepoDatabaseOverlay),
     Watch(RepoWatchAction),
     Migrate(RepoMigrateAction),
 }
@@ -186,6 +188,27 @@ fn repo_database_action(me: RepoDatabaseAction, manager: RepositoryManager) -> a
 
     let manager = manager.into_owned_manager()?;
     manager.to_database(&me.output.join("repo.db"))?;
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct RepoDatabaseOverlay {
+    #[clap(long = "overlay")]
+    overlay: Vec<PathBuf>,
+    #[clap(help = ll!("export-to"))]
+    output: PathBuf,
+}
+
+#[handler(RepoDatabaseOverlay)]
+fn repo_database_overlay(me: RepoDatabaseOverlay, manager: RepositoryManager) -> anyhow::Result<()> {
+    if !me.output.is_dir() {
+        bail!("Output path must be a directory!");
+    }
+
+    let manager = manager.into_owned_manager()?;
+    let overlay = me.overlay.iter().map(|p| RepositoryManager::new(p).and_then(RepositoryManager::into_owned_manager)).collect::<Result<Vec<_>, _>>()?;
+    manager.apply_overlay(overlay, me.output.join("repo.db"))?;
 
     Ok(())
 }
